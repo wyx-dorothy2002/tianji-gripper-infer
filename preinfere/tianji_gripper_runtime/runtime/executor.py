@@ -23,6 +23,10 @@ class ActionExecutor:
         debug_callback: Callable[..., None] | None = None,
         arm_interpolation_hz: float | None = None,
         arm_interpolation_mode: str = "cubic",
+        slow_dispatch_enabled: bool = False,
+        slow_dispatch_duration_sec: float = 1.0,
+        slow_dispatch_frequency_hz: float = 20.0,
+        slow_dispatch_interpolation_mode: str = "cubic",
     ) -> None:
         self.robot = robot
         self.adapter = adapter
@@ -33,6 +37,16 @@ class ActionExecutor:
             raise ValueError("arm_interpolation_mode must be one of {'cubic', 'linear'}")
         self.arm_interpolation_hz = arm_interpolation_hz
         self.arm_interpolation_mode = arm_interpolation_mode
+        if slow_dispatch_duration_sec < 0.0:
+            raise ValueError("slow_dispatch_duration_sec must be non-negative")
+        if slow_dispatch_frequency_hz <= 0.0:
+            raise ValueError("slow_dispatch_frequency_hz must be positive")
+        if slow_dispatch_interpolation_mode not in {"cubic", "linear"}:
+            raise ValueError("slow_dispatch_interpolation_mode must be one of {'cubic', 'linear'}")
+        self.slow_dispatch_enabled = bool(slow_dispatch_enabled)
+        self.slow_dispatch_duration_sec = float(slow_dispatch_duration_sec)
+        self.slow_dispatch_frequency_hz = float(slow_dispatch_frequency_hz)
+        self.slow_dispatch_interpolation_mode = slow_dispatch_interpolation_mode
         self._last_sent_action: RightArmGripperAction | None = None
 
     def execute_chunk(
@@ -60,9 +74,19 @@ class ActionExecutor:
             try:
                 state_before = self.robot.get_state()
                 if not dry_run:
-                    sent_action = self._send_action_with_optional_arm_interpolation(
+                    interpolation_dt = (
+                        self.slow_dispatch_duration_sec if self.slow_dispatch_enabled else dt
+                    )
+                    interpolation_hz = (
+                        self.slow_dispatch_frequency_hz
+                        if self.slow_dispatch_enabled
+                        else self.arm_interpolation_hz
+                    )
+                    sent_action = self._send_action_with_optional_interpolation(
                         action=action,
-                        dt=dt,
+                        interpolation_dt=interpolation_dt,
+                        interpolation_hz=interpolation_hz,
+                        interpolate_grippers=self.slow_dispatch_enabled,
                         step_start=step_start,
                         state_before=state_before,
                         stop_callback=stop_callback,
@@ -131,22 +155,24 @@ class ActionExecutor:
                 _interruptible_sleep(remaining, stop_callback)
         return last_executed_action
 
-    def _send_action_with_optional_arm_interpolation(
+    def _send_action_with_optional_interpolation(
         self,
         *,
         action: RightArmGripperAction,
-        dt: float,
+        interpolation_dt: float,
+        interpolation_hz: float | None,
+        interpolate_grippers: bool,
         step_start: float,
         state_before: object,
         stop_callback: Callable[[], bool] | None,
     ) -> RightArmGripperAction:
-        substeps = _interpolation_substeps(dt=dt, hz=self.arm_interpolation_hz)
+        substeps = _interpolation_substeps(dt=interpolation_dt, hz=interpolation_hz)
         if substeps <= 1:
             self.robot.send_action(action)
             self._last_sent_action = action.copy()
             return action
 
-        sub_dt = float(dt) / float(substeps)
+        sub_dt = float(interpolation_dt) / float(substeps)
         start_action = self._last_sent_action
         start_right = (
             np.asarray(state_before.right_arm_q, dtype=np.float32)
@@ -158,17 +184,42 @@ class ActionExecutor:
             if start_action is None or not start_action.control_left_arm
             else start_action.left_arm_q
         )
+        start_right_gripper = (
+            np.asarray(state_before.right_gripper_q, dtype=np.float32)
+            if start_action is None
+            else start_action.right_gripper_q
+        )
+        start_left_gripper = (
+            np.asarray(state_before.left_gripper_q, dtype=np.float32)
+            if start_action is None or not start_action.control_left_gripper
+            else start_action.left_gripper_q
+        )
+        interpolation_mode = (
+            self.slow_dispatch_interpolation_mode
+            if self.slow_dispatch_enabled
+            else self.arm_interpolation_mode
+        )
         sent_action = action
         for interp_idx in range(substeps):
             if stop_callback is not None and stop_callback():
                 break
             s = float(interp_idx + 1) / float(substeps)
-            alpha = _interpolation_alpha(s, self.arm_interpolation_mode)
+            alpha = _interpolation_alpha(s, interpolation_mode)
             sent_action = RightArmGripperAction(
                 right_arm_q=start_right + alpha * (action.right_arm_q - start_right),
                 left_arm_q=start_left + alpha * (action.left_arm_q - start_left),
-                right_gripper_q=action.right_gripper_q.copy(),
-                left_gripper_q=action.left_gripper_q.copy(),
+                right_gripper_q=(
+                    start_right_gripper
+                    + alpha * (action.right_gripper_q - start_right_gripper)
+                    if interpolate_grippers
+                    else action.right_gripper_q.copy()
+                ),
+                left_gripper_q=(
+                    start_left_gripper
+                    + alpha * (action.left_gripper_q - start_left_gripper)
+                    if interpolate_grippers
+                    else action.left_gripper_q.copy()
+                ),
                 control_left_arm=action.control_left_arm,
                 control_left_gripper=action.control_left_gripper,
             )

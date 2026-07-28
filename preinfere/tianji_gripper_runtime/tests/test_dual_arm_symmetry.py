@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 
@@ -190,8 +191,8 @@ class DualArmSymmetryTest(unittest.TestCase):
         np.testing.assert_array_equal(action.left_gripper_q, [-2.0])
 
         limits = SafetyConfig.from_yaml(
-            "/home/user/workspace/TJ-gripper_infer-main/"
-            "preinfere/tianji_gripper_runtime/configs/robot_limits.yaml"
+            Path(__file__).resolve().parents[3]
+            / "preinfere/tianji_gripper_runtime/configs/robot_limits.yaml"
         )
         limits.arm_max_step = 1.0
         limits.enable_arm_velocity_limit = False

@@ -9,6 +9,8 @@ from typing import Any
 import numpy as np
 
 from . import schema
+from .gripper_normalization import GripperCalibration
+from .gripper_normalization import convert_gripper_units
 from .robot_state import RightArmGripperState, ensure_state
 
 
@@ -56,6 +58,8 @@ class ObservationBuilder:
         policy_arm_state_unit: str = schema.STATE_UNIT,
         robot_gripper_state_unit: str = "rad",
         policy_gripper_state_unit: str = "rad",
+        right_gripper_calibration: GripperCalibration | None = None,
+        left_gripper_calibration: GripperCalibration | None = None,
     ) -> None:
         self.modality_configs = modality_configs
         self.state_key_map = dict(state_key_map or {})
@@ -64,6 +68,8 @@ class ObservationBuilder:
         self.policy_arm_state_unit = policy_arm_state_unit
         self.robot_gripper_state_unit = robot_gripper_state_unit
         self.policy_gripper_state_unit = policy_gripper_state_unit
+        self.right_gripper_calibration = right_gripper_calibration
+        self.left_gripper_calibration = left_gripper_calibration
         self.video_keys = list(modality_configs["video"].modality_keys)
         self.state_keys = list(modality_configs["state"].modality_keys)
         self.language_key = list(modality_configs["language"].modality_keys)[0]
@@ -95,15 +101,21 @@ class ObservationBuilder:
             self.robot_arm_state_unit,
             self.policy_arm_state_unit,
         )
-        right_gripper_q = _convert_units(
+        right_gripper_q = convert_gripper_units(
             checked_state.right_gripper_q,
             self.robot_gripper_state_unit,
             self.policy_gripper_state_unit,
+            self.right_gripper_calibration,
         )
-        left_gripper_q = _convert_units(
-            checked_state.left_gripper_q,
-            self.robot_gripper_state_unit,
-            self.policy_gripper_state_unit,
+        left_gripper_q = (
+            convert_gripper_units(
+                checked_state.left_gripper_q,
+                self.robot_gripper_state_unit,
+                self.policy_gripper_state_unit,
+                self.left_gripper_calibration,
+            )
+            if checked_state.include_left
+            else checked_state.left_gripper_q.copy()
         )
         state_vector = RightArmGripperState(
             right_arm_q=right_arm_q,
@@ -197,11 +209,15 @@ class PiObservationBuilder:
         policy_arm_state_unit: str = "rad",
         robot_gripper_state_unit: str = "rad",
         policy_gripper_state_unit: str = "rad",
+        right_gripper_calibration: GripperCalibration | None = None,
+        left_gripper_calibration: GripperCalibration | None = None,
     ) -> None:
         self.robot_arm_state_unit = robot_arm_state_unit
         self.policy_arm_state_unit = policy_arm_state_unit
         self.robot_gripper_state_unit = robot_gripper_state_unit
         self.policy_gripper_state_unit = policy_gripper_state_unit
+        self.right_gripper_calibration = right_gripper_calibration
+        self.left_gripper_calibration = left_gripper_calibration
         self.video_keys = ["head", "left_wrist", "right_wrist"]
         self.required_camera_keys = list(self.video_keys)
 
@@ -245,15 +261,17 @@ class PiObservationBuilder:
             self.robot_arm_state_unit,
             self.policy_arm_state_unit,
         )
-        converted[14:15] = _convert_units(
+        converted[14:15] = convert_gripper_units(
             converted[14:15],
             self.robot_gripper_state_unit,
             self.policy_gripper_state_unit,
+            self.right_gripper_calibration,
         )
         if converted.shape == (16,):
-            converted[15:16] = _convert_units(
+            converted[15:16] = convert_gripper_units(
                 converted[15:16],
                 self.robot_gripper_state_unit,
                 self.policy_gripper_state_unit,
+                self.left_gripper_calibration,
             )
         return converted.astype(np.float32, copy=False)

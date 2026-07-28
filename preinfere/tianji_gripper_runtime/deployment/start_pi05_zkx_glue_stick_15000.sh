@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-ROOT_DIR="/home/user/workspace/openpi"
-CKPT_DIR="$ROOT_DIR/ckpts/pi05_ziyi_sensor_30k_bs256_lr5e5/15000"
+ROOT_DIR="${ROOT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+CKPT_DIR="${CKPT_DIR:-$ROOT_DIR/ckpts/pi05_ziyi_sensor_30k_bs256_lr5e5/15000}"
 
 cd "$ROOT_DIR"
 export PYTHONPATH="$ROOT_DIR/src:$ROOT_DIR/packages/openpi-client/src:${PYTHONPATH:-}"

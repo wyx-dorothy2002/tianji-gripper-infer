@@ -28,6 +28,7 @@ from tianji_gripper_runtime.runtime.action_adapter import (
 )
 from tianji_gripper_runtime.runtime.action_keepalive import ActionKeepalive
 from tianji_gripper_runtime.runtime.executor import ActionExecutor
+from tianji_gripper_runtime.runtime.gripper_normalization import GripperCalibration
 from tianji_gripper_runtime.runtime.groot_policy_client import GrootPolicyClient, PolicyServerError
 from tianji_gripper_runtime.runtime.observation_builder import (
     ObservationBuilder,
@@ -47,6 +48,10 @@ from tianji_gripper_runtime.runtime.robot_interface import (
     make_robot,
 )
 from tianji_gripper_runtime.runtime.safety import SafetyConfig, SafetyError, SafetyLayer
+from tianji_gripper_runtime.runtime.slow_dispatch import (
+    SlowDispatchCancelledError,
+    SlowInterpolatedDispatcher,
+)
 from tianji_wuji_runtime.runtime.camera_manager import CameraError, CameraManager
 from tianji_wuji_runtime.runtime.event_logger import RuntimeEventLogger
 from tianji_wuji_runtime.runtime.keyboard import (
@@ -126,6 +131,24 @@ def _apply_manual_gripper_open(
         if action.control_left_gripper:
             action.left_gripper_q[:] = np.float32(target_gripper_q)
     return actions
+
+
+def _build_reset_action(
+    *,
+    left_arm_q: tuple[float, ...],
+    right_arm_q: tuple[float, ...],
+    gripper1_motor_rad: float,
+    gripper2_motor_rad: float,
+) -> RightArmGripperAction:
+    """Build the configured dual-arm/dual-gripper operator reset target."""
+    return RightArmGripperAction(
+        right_arm_q=np.asarray(right_arm_q, dtype=np.float32),
+        left_arm_q=np.asarray(left_arm_q, dtype=np.float32),
+        right_gripper_q=np.asarray([gripper2_motor_rad], dtype=np.float32),
+        left_gripper_q=np.asarray([gripper1_motor_rad], dtype=np.float32),
+        control_left_arm=True,
+        control_left_gripper=True,
+    )
 
 
 def _send_prestart_gripper_open(
@@ -222,12 +245,28 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--policy-arm-state-unit", default="deg")
     parser.add_argument("--robot-gripper-state-unit", default="rad")
     parser.add_argument("--policy-gripper-state-unit", default="rad")
+    parser.add_argument("--gripper-close-motor-rad", type=float, default=None)
+    parser.add_argument("--gripper-open-motor-rad", type=float, default=None)
+    parser.add_argument("--gripper2-close-motor-rad", type=float, default=None)
+    parser.add_argument("--gripper2-open-motor-rad", type=float, default=None)
     parser.add_argument("--task", default="pick up anything")
     parser.add_argument("--execution-horizon", type=int, default=1)
     parser.add_argument("--duration", type=float, default=0.05)
     parser.add_argument("--chunk-sleep", type=float, default=0.0)
     parser.add_argument("--arm-interpolation-hz", type=float, default=None)
     parser.add_argument("--arm-interpolation-mode", choices=["cubic", "linear"], default="cubic")
+    parser.add_argument("--slow-dispatch-duration-sec", type=float, default=1.0)
+    parser.add_argument("--slow-dispatch-frequency-hz", type=float, default=20.0)
+    parser.add_argument(
+        "--slow-dispatch-interpolation-mode",
+        choices=["cubic", "linear"],
+        default="cubic",
+    )
+    parser.add_argument("--reset-left-arm-q", default="140,-90,-90,-120,0,0,0")
+    parser.add_argument("--reset-right-arm-q", default="-140,-90,90,-120,0,0,0")
+    parser.add_argument("--reset-gripper1-motor-rad", type=float, default=-5.0616)
+    parser.add_argument("--reset-gripper2-motor-rad", type=float, default=-5.2817)
+    parser.add_argument("--slow-dispatch-enabled", action="store_true")
     parser.add_argument("--safe-mode", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--record-dir", default=str(RUNTIME_ROOT / "infer_logs"))
@@ -287,6 +326,21 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gripper-torque-nm", type=float, default=0.0)
     parser.add_argument("--gripper-min-pos-rad", type=float, default=-5.5)
     parser.add_argument("--gripper-max-pos-rad", type=float, default=1.2)
+    parser.add_argument("--gripper-torque-protection-enabled", action="store_true")
+    parser.add_argument(
+        "--gripper-torque-protection-mode",
+        choices=["torque", "disabled"],
+        default="torque",
+    )
+    parser.add_argument("--gripper-torque-filter-alpha", type=float, default=0.3)
+    parser.add_argument("--gripper-torque-threshold-nm", type=float, default=1.0)
+    parser.add_argument("--gripper-torque-release-threshold-nm", type=float, default=0.2)
+    parser.add_argument("--gripper-torque-count-threshold", type=int, default=5)
+    parser.add_argument("--gripper-torque-extra-tighten-rad", type=float, default=0.0)
+    parser.add_argument("--gripper-holding-kp", type=float, default=4.0)
+    parser.add_argument("--gripper-holding-kd", type=float, default=0.1)
+    parser.add_argument("--gripper-closing-direction", type=float, choices=[-1.0, 1.0], default=1.0)
+    parser.add_argument("--gripper-torque-direction-deadband-rad", type=float, default=0.01)
     parser.add_argument("--gripper-open-key", default="o")
     parser.add_argument(
         "--gripper-open-limit",
@@ -303,6 +357,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tianji-tool-arm-a-dynamics", default=None)
     parser.add_argument("--tianji-tool-arm-b-kinematics", default=None)
     parser.add_argument("--tianji-tool-arm-b-dynamics", default=None)
+    parser.add_argument("--tianji-state3-joint-k-a", default=None)
+    parser.add_argument("--tianji-state3-joint-d-a", default=None)
+    parser.add_argument("--tianji-state3-joint-k-b", default=None)
+    parser.add_argument("--tianji-state3-joint-d-b", default=None)
     parser.add_argument("--tianji-home-joints-a", default=None)
     parser.add_argument("--tianji-home-joints-b", default=None)
     parser.add_argument("--max-arm-joint-step", type=float, default=10.0)
@@ -405,6 +463,18 @@ def main() -> int:
         raise ValueError("--duration must be positive")
     if args.chunk_sleep < 0:
         raise ValueError("--chunk-sleep must be non-negative")
+    if args.slow_dispatch_duration_sec < 0:
+        raise ValueError("--slow-dispatch-duration-sec must be non-negative")
+    if args.slow_dispatch_frequency_hz <= 0:
+        raise ValueError("--slow-dispatch-frequency-hz must be positive")
+    reset_left_arm_q = _parse_optional_vector(
+        args.reset_left_arm_q, name="--reset-left-arm-q", dim=7
+    )
+    reset_right_arm_q = _parse_optional_vector(
+        args.reset_right_arm_q, name="--reset-right-arm-q", dim=7
+    )
+    if reset_left_arm_q is None or reset_right_arm_q is None:
+        raise ValueError("reset arm targets must be configured")
     if args.no_keyboard and not args.auto_start:
         raise ValueError("--no-keyboard requires --auto-start")
     if (
@@ -434,6 +504,16 @@ def main() -> int:
         control_gripper_unit=args.control_gripper_unit,
         action_mode=args.action_mode,
         control_mode=args.control_mode,
+        right_gripper_calibration=GripperCalibration(
+            close_motor_rad=args.gripper2_close_motor_rad,
+            open_motor_rad=args.gripper2_open_motor_rad,
+            label="right gripper (gripper2)",
+        ),
+        left_gripper_calibration=GripperCalibration(
+            close_motor_rad=args.gripper_close_motor_rad,
+            open_motor_rad=args.gripper_open_motor_rad,
+            label="left gripper (gripper)",
+        ),
     )
     policy = _wait_for_policy_client(args)
     modality_configs = policy.get_modality_config()
@@ -443,6 +523,16 @@ def main() -> int:
             policy_arm_state_unit=args.policy_arm_state_unit,
             robot_gripper_state_unit=args.robot_gripper_state_unit,
             policy_gripper_state_unit=args.policy_gripper_state_unit,
+            right_gripper_calibration=GripperCalibration(
+                close_motor_rad=args.gripper2_close_motor_rad,
+                open_motor_rad=args.gripper2_open_motor_rad,
+                label="right gripper (gripper2)",
+            ),
+            left_gripper_calibration=GripperCalibration(
+                close_motor_rad=args.gripper_close_motor_rad,
+                open_motor_rad=args.gripper_open_motor_rad,
+                label="left gripper (gripper)",
+            ),
         )
     else:
         obs_builder = ObservationBuilder(
@@ -451,6 +541,16 @@ def main() -> int:
             policy_arm_state_unit=args.policy_arm_state_unit,
             robot_gripper_state_unit=args.robot_gripper_state_unit,
             policy_gripper_state_unit=args.policy_gripper_state_unit,
+            right_gripper_calibration=GripperCalibration(
+                close_motor_rad=args.gripper2_close_motor_rad,
+                open_motor_rad=args.gripper2_open_motor_rad,
+                label="right gripper (gripper2)",
+            ),
+            left_gripper_calibration=GripperCalibration(
+                close_motor_rad=args.gripper_close_motor_rad,
+                open_motor_rad=args.gripper_open_motor_rad,
+                label="left gripper (gripper)",
+            ),
         )
 
     cameras = CameraManager.from_cli_specs(
@@ -516,6 +616,26 @@ def main() -> int:
                 name="--tianji-tool-arm-b-dynamics",
                 dim=10,
             ),
+            tianji_state3_joint_k_a=_parse_optional_vector(
+                args.tianji_state3_joint_k_a,
+                name="--tianji-state3-joint-k-a",
+                dim=schema.LEFT_ARM_DOF,
+            ),
+            tianji_state3_joint_d_a=_parse_optional_vector(
+                args.tianji_state3_joint_d_a,
+                name="--tianji-state3-joint-d-a",
+                dim=schema.LEFT_ARM_DOF,
+            ),
+            tianji_state3_joint_k_b=_parse_optional_vector(
+                args.tianji_state3_joint_k_b,
+                name="--tianji-state3-joint-k-b",
+                dim=schema.RIGHT_ARM_DOF,
+            ),
+            tianji_state3_joint_d_b=_parse_optional_vector(
+                args.tianji_state3_joint_d_b,
+                name="--tianji-state3-joint-d-b",
+                dim=schema.RIGHT_ARM_DOF,
+            ),
             tianji_home_joints_a=_parse_optional_vector(
                 args.tianji_home_joints_a,
                 name="--tianji-home-joints-a",
@@ -544,6 +664,17 @@ def main() -> int:
             gripper_torque_nm=args.gripper_torque_nm,
             gripper_min_pos_rad=args.gripper_min_pos_rad,
             gripper_max_pos_rad=args.gripper_max_pos_rad,
+            gripper_torque_protection_enabled=args.gripper_torque_protection_enabled,
+            gripper_torque_protection_mode=args.gripper_torque_protection_mode,
+            gripper_torque_filter_alpha=args.gripper_torque_filter_alpha,
+            gripper_torque_threshold_nm=args.gripper_torque_threshold_nm,
+            gripper_torque_release_threshold_nm=args.gripper_torque_release_threshold_nm,
+            gripper_torque_count_threshold=args.gripper_torque_count_threshold,
+            gripper_torque_extra_tighten_rad=args.gripper_torque_extra_tighten_rad,
+            gripper_holding_kp=args.gripper_holding_kp,
+            gripper_holding_kd=args.gripper_holding_kd,
+            gripper_closing_direction=args.gripper_closing_direction,
+            gripper_torque_direction_deadband_rad=args.gripper_torque_direction_deadband_rad,
             command_left_side=args.control_mode == "dual_arm_dual_gripper",
             left_arm_freeze_q=_parse_optional_vector(
                 args.left_arm_freeze_q,
@@ -605,6 +736,10 @@ def main() -> int:
             "execution_horizon": args.execution_horizon,
             "duration": args.duration,
             "chunk_sleep": args.chunk_sleep,
+            "slow_dispatch_duration_sec": args.slow_dispatch_duration_sec,
+            "slow_dispatch_frequency_hz": args.slow_dispatch_frequency_hz,
+            "slow_dispatch_interpolation_mode": args.slow_dispatch_interpolation_mode,
+            "slow_dispatch_enabled": args.slow_dispatch_enabled,
             "dry_run": args.dry_run,
             "ignore_gripper_safety": args.ignore_gripper_safety,
             "robot_backend": args.robot_backend,
@@ -657,6 +792,18 @@ def main() -> int:
         debug_callback=_print_runtime_gripper_debug,
         arm_interpolation_hz=args.arm_interpolation_hz,
         arm_interpolation_mode=args.arm_interpolation_mode,
+        slow_dispatch_enabled=args.slow_dispatch_enabled,
+        slow_dispatch_duration_sec=args.slow_dispatch_duration_sec,
+        slow_dispatch_frequency_hz=args.slow_dispatch_frequency_hz,
+        slow_dispatch_interpolation_mode=args.slow_dispatch_interpolation_mode,
+    )
+    reset_dispatcher = SlowInterpolatedDispatcher(
+        robot,
+        adapter=adapter,
+        duration_sec=args.slow_dispatch_duration_sec,
+        frequency_hz=args.slow_dispatch_frequency_hz,
+        interpolation_mode=args.slow_dispatch_interpolation_mode,
+        event_logger=log_event,
     )
     keepalive = ActionKeepalive(robot, event_logger=log_event)
     state_machine = RuntimeStateMachine(
@@ -669,7 +816,7 @@ def main() -> int:
 
     print(f"[runtime] logs: {recorder.run_dir}")
     print(
-        "[runtime] controls: R run, P pause, Space hold, "
+        "[runtime] controls: R run/resume, E pause (P also works), B reset, Space hold, "
         f"{args.gripper_open_key.upper()} prestart/override gripper max open, "
         "H home, N next safe chunk, Q quit"
     )
@@ -716,6 +863,50 @@ def main() -> int:
                     keepalive.stop()
                     robot.hold_position()
                     break
+                if state_machine.consume_reset_request():
+                    if args.control_mode != "dual_arm_dual_gripper":
+                        print("[runtime] B reset requires --control-mode dual_arm_dual_gripper")
+                        log_event(
+                            "reset_rejected",
+                            reason="reset_requires_dual_arm_dual_gripper",
+                            control_mode=args.control_mode,
+                        )
+                    else:
+                        keepalive.stop()
+                        print(
+                            "[runtime] B reset: moving A/B arms and both grippers "
+                            f"with slow interpolation ({args.slow_dispatch_duration_sec:.2f}s, "
+                            f"{args.slow_dispatch_frequency_hz:.1f}Hz)"
+                        )
+                        try:
+                            reset_dispatcher.dispatch_control_action(
+                                _build_reset_action(
+                                    left_arm_q=reset_left_arm_q,
+                                    right_arm_q=reset_right_arm_q,
+                                    gripper1_motor_rad=args.reset_gripper1_motor_rad,
+                                    gripper2_motor_rad=args.reset_gripper2_motor_rad,
+                                ),
+                                stop_callback=lambda: state_machine.quit_requested,
+                            )
+                            state_machine.state = RuntimeState.PAUSED
+                            log_event(
+                                "reset_reached",
+                                trigger_key="b",
+                                target={
+                                    "left_arm": list(reset_left_arm_q),
+                                    "right_arm": list(reset_right_arm_q),
+                                    "gripper1_motor_rad": args.reset_gripper1_motor_rad,
+                                    "gripper2_motor_rad": args.reset_gripper2_motor_rad,
+                                },
+                            )
+                            print("[runtime] B reset reached; press R to resume model inference")
+                        except SlowDispatchCancelledError:
+                            print("[runtime] B reset cancelled; robot is holding position")
+                        except RobotError as exc:
+                            print(f"[runtime] B reset failed: {exc}")
+                            log_event("reset_error", error=str(exc))
+                    previous_runtime_state = state_machine.state
+                    continue
                 if (
                     args.control_mode == "right_arm_right_gripper"
                     and state_machine.state == RuntimeState.RUNNING

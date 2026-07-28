@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-OPENPI_ROOT="/home/user/workspace/TJ-gripper_infer-main"
-CKPT_DIR="/home/user/workspace/checkpoints/storage/pi05_tianji_pick_and_place_0720_night_0721_day_night_50k_bs256_lr5e5_8gpu_dualarm/50000"
+OPENPI_ROOT="${OPENPI_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+CKPT_DIR="${CKPT_DIR:-/home/user/workspace/checkpoints/storage/pi05_tianji_pick_and_place_0720_night_0721_day_night_50k_bs256_lr5e5_8gpu_dualarm/50000}"
 CONFIG_NAME="storage"
 PORT="${PORT:-8000}"
 

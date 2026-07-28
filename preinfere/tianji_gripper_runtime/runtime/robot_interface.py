@@ -55,6 +55,10 @@ class RobotConnectionConfig:
     tianji_tool_arm_a_dynamics: tuple[float, ...] | None = None
     tianji_tool_arm_b_kinematics: tuple[float, ...] | None = None
     tianji_tool_arm_b_dynamics: tuple[float, ...] | None = None
+    tianji_state3_joint_k_a: tuple[float, ...] | None = None
+    tianji_state3_joint_d_a: tuple[float, ...] | None = None
+    tianji_state3_joint_k_b: tuple[float, ...] | None = None
+    tianji_state3_joint_d_b: tuple[float, ...] | None = None
     tianji_home_joints_a: tuple[float, ...] | None = None
     tianji_home_joints_b: tuple[float, ...] | None = None
     gripper_485_arm: str = "A"
@@ -75,6 +79,17 @@ class RobotConnectionConfig:
     gripper_torque_nm: float = 0.0
     gripper_min_pos_rad: float = -5.5
     gripper_max_pos_rad: float = 1.2
+    gripper_torque_protection_enabled: bool = False
+    gripper_torque_protection_mode: str = "torque"
+    gripper_torque_filter_alpha: float = 0.3
+    gripper_torque_threshold_nm: float = 1.0
+    gripper_torque_release_threshold_nm: float = 0.2
+    gripper_torque_count_threshold: int = 5
+    gripper_torque_extra_tighten_rad: float = 0.0
+    gripper_holding_kp: float = 4.0
+    gripper_holding_kd: float = 0.1
+    gripper_closing_direction: float = 1.0
+    gripper_torque_direction_deadband_rad: float = 0.01
     command_left_side: bool = True
     left_arm_freeze_q: tuple[float, ...] | None = None
     left_gripper_freeze_q: tuple[float, ...] | None = None
@@ -382,6 +397,10 @@ def make_robot(config: RobotConnectionConfig) -> RightArmGripperRobot:
                 tool_arm_a_dynamics=config.tianji_tool_arm_a_dynamics,
                 tool_arm_b_kinematics=config.tianji_tool_arm_b_kinematics,
                 tool_arm_b_dynamics=config.tianji_tool_arm_b_dynamics,
+                state3_joint_k_a=config.tianji_state3_joint_k_a,
+                state3_joint_d_a=config.tianji_state3_joint_d_a,
+                state3_joint_k_b=config.tianji_state3_joint_k_b,
+                state3_joint_d_b=config.tianji_state3_joint_d_b,
                 home_joints_a=config.tianji_home_joints_a,
                 home_joints_b=config.tianji_home_joints_b,
             )
@@ -455,6 +474,17 @@ def _make_grippers(
             rs05_torque_nm=config.gripper_torque_nm,
             rs05_min_pos_rad=config.gripper_min_pos_rad,
             rs05_max_pos_rad=config.gripper_max_pos_rad,
+            rs05_torque_protection_enabled=config.gripper_torque_protection_enabled,
+            rs05_torque_protection_mode=config.gripper_torque_protection_mode,
+            rs05_torque_filter_alpha=config.gripper_torque_filter_alpha,
+            rs05_torque_threshold_nm=config.gripper_torque_threshold_nm,
+            rs05_torque_release_threshold_nm=config.gripper_torque_release_threshold_nm,
+            rs05_torque_count_threshold=config.gripper_torque_count_threshold,
+            rs05_torque_extra_tighten_rad=config.gripper_torque_extra_tighten_rad,
+            rs05_holding_kp=config.gripper_holding_kp,
+            rs05_holding_kd=config.gripper_holding_kd,
+            rs05_closing_direction=config.gripper_closing_direction,
+            rs05_torque_direction_deadband_rad=config.gripper_torque_direction_deadband_rad,
         ),
         backend="fake" if not config.command_left_side else config.left_gripper_backend or config.gripper_backend,
         end_channel=end_channel,
@@ -482,6 +512,17 @@ def _make_grippers(
             rs05_torque_nm=config.gripper_torque_nm,
             rs05_min_pos_rad=config.gripper_min_pos_rad,
             rs05_max_pos_rad=config.gripper_max_pos_rad,
+            rs05_torque_protection_enabled=config.gripper_torque_protection_enabled,
+            rs05_torque_protection_mode=config.gripper_torque_protection_mode,
+            rs05_torque_filter_alpha=config.gripper_torque_filter_alpha,
+            rs05_torque_threshold_nm=config.gripper_torque_threshold_nm,
+            rs05_torque_release_threshold_nm=config.gripper_torque_release_threshold_nm,
+            rs05_torque_count_threshold=config.gripper_torque_count_threshold,
+            rs05_torque_extra_tighten_rad=config.gripper_torque_extra_tighten_rad,
+            rs05_holding_kp=config.gripper_holding_kp,
+            rs05_holding_kd=config.gripper_holding_kd,
+            rs05_closing_direction=config.gripper_closing_direction,
+            rs05_torque_direction_deadband_rad=config.gripper_torque_direction_deadband_rad,
         ),
         backend=config.right_gripper_backend or config.gripper_backend,
         end_channel=end_channel,

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from . import schema
+from .gripper_normalization import GripperCalibration
+from .gripper_normalization import convert_gripper_units
 from .robot_state import RightArmGripperState, ensure_state
 
 
@@ -115,6 +117,8 @@ class ActionAdapter:
         action_mode: str = schema.ACTION_MODE,
         schema_version: str = schema.ACTION_SCHEMA_VERSION,
         control_mode: str = "right_arm_right_gripper",
+        right_gripper_calibration: GripperCalibration | None = None,
+        left_gripper_calibration: GripperCalibration | None = None,
     ) -> None:
         if action_mode not in {"absolute", "delta"}:
             raise ValueError(f"action_mode must be 'absolute' or 'delta', got {action_mode!r}")
@@ -127,6 +131,8 @@ class ActionAdapter:
         self.action_mode = action_mode
         self.schema_version = schema_version
         self.control_mode = control_mode
+        self.right_gripper_calibration = right_gripper_calibration
+        self.left_gripper_calibration = left_gripper_calibration
         self.action_dim = schema.action_dim_for_mode(control_mode)
 
     def split_action(self, action: np.ndarray) -> RightArmGripperAction:
@@ -143,15 +149,17 @@ class ActionAdapter:
                     self.policy_arm_unit,
                     self.control_arm_unit,
                 ),
-                right_gripper_q=_convert_units(
+                right_gripper_q=convert_gripper_units(
                     arr[schema.RIGHT_GRIPPER_SLICE],
                     self.policy_gripper_unit,
                     self.control_gripper_unit,
+                    self.right_gripper_calibration,
                 ),
-                left_gripper_q=_convert_units(
+                left_gripper_q=convert_gripper_units(
                     arr[schema.LEFT_GRIPPER_SLICE],
                     self.policy_gripper_unit,
                     self.control_gripper_unit,
+                    self.left_gripper_calibration,
                 ),
                 control_left_arm=True,
                 control_left_gripper=True,
@@ -162,10 +170,11 @@ class ActionAdapter:
                 self.policy_arm_unit,
                 self.control_arm_unit,
             ),
-            right_gripper_q=_convert_units(
+            right_gripper_q=convert_gripper_units(
                 arr[7:8],
                 self.policy_gripper_unit,
                 self.control_gripper_unit,
+                self.right_gripper_calibration,
             ),
         )
 

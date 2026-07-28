@@ -33,6 +33,7 @@ class RuntimeStateMachine:
         self.recording = True
         self.home_requested = False
         self.manual_gripper_open_requested = False
+        self.reset_requested = False
 
     def update(self, key: str | None) -> None:
         if key is None:
@@ -42,8 +43,10 @@ class RuntimeStateMachine:
             self.state = RuntimeState.STOPPED
         elif key == "r" and self.state != RuntimeState.ERROR:
             self.state = RuntimeState.RUNNING
-        elif key == "p" and self.state != RuntimeState.ERROR:
+        elif key in {"e", "p"} and self.state != RuntimeState.ERROR:
             self.state = RuntimeState.PAUSED
+        elif key == "b":
+            self.reset_requested = True
         elif key == "h":
             self.home_requested = True
         elif key == self.manual_gripper_open_key:
@@ -69,6 +72,11 @@ class RuntimeStateMachine:
     def consume_manual_gripper_open_request(self) -> bool:
         requested = self.manual_gripper_open_requested
         self.manual_gripper_open_requested = False
+        return requested
+
+    def consume_reset_request(self) -> bool:
+        requested = self.reset_requested
+        self.reset_requested = False
         return requested
 
 

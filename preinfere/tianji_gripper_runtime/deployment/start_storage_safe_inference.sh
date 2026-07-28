@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-INFER_ROOT="/home/user/workspace/TJ-gripper_infer-main"
+INFER_ROOT="${INFER_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 
 cd "$INFER_ROOT"
 export PYTHONPATH="$INFER_ROOT/src:$INFER_ROOT/packages/openpi-client/src:${PYTHONPATH:-}"

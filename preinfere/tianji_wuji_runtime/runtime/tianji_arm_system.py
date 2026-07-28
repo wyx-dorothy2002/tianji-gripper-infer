@@ -50,6 +50,10 @@ class TianjiHostConfig:
     tool_arm_a_dynamics: tuple[float, ...] | None = None
     tool_arm_b_kinematics: tuple[float, ...] | None = None
     tool_arm_b_dynamics: tuple[float, ...] | None = None
+    state3_joint_k_a: tuple[float, ...] | None = None
+    state3_joint_d_a: tuple[float, ...] | None = None
+    state3_joint_k_b: tuple[float, ...] | None = None
+    state3_joint_d_b: tuple[float, ...] | None = None
     home_joints_a: tuple[float, ...] | None = None
     home_joints_b: tuple[float, ...] | None = None
 
@@ -323,6 +327,10 @@ class TianjiDualArmSystem:
                     mode="joint",
                     vel_ratio=int(self.config.vel_ratio),
                     acc_ratio=int(self.config.acc_ratio),
+                    state3_joint_k_a=self.config.state3_joint_k_a,
+                    state3_joint_d_a=self.config.state3_joint_d_a,
+                    state3_joint_k_b=self.config.state3_joint_k_b,
+                    state3_joint_d_b=self.config.state3_joint_d_b,
                 )
             except TypeError as exc:
                 # Keep compatibility with the legacy Tianji controller, whose
@@ -622,7 +630,6 @@ def _load_marvin_controller(sdk_root: Path) -> type[Any]:
                 for arm, joints in commands.items()
             ]
             _write_marvin_batch(self.robot, *setters)
-            time.sleep(0.05)
             after_feedback = _read_marvin_feedback(self.robot, self._dcss)
             _print_marvin_motion_debug(
                 before_feedback=before_feedback,
@@ -656,6 +663,10 @@ def _load_marvin_controller(sdk_root: Path) -> type[Any]:
             mode: str = "joint",
             vel_ratio: int = _JOINT_VEL_RATIO,
             acc_ratio: int = _JOINT_ACC_RATIO,
+            state3_joint_k_a: tuple[float, ...] | None = None,
+            state3_joint_d_a: tuple[float, ...] | None = None,
+            state3_joint_k_b: tuple[float, ...] | None = None,
+            state3_joint_d_b: tuple[float, ...] | None = None,
         ) -> None:
             if mode != "joint":
                 raise TianjiHostError(f"Marvin adapter only supports joint impedance mode, got {mode!r}")
@@ -663,8 +674,21 @@ def _load_marvin_controller(sdk_root: Path) -> type[Any]:
                 raise TianjiHostError(
                     "Marvin joint velocity and acceleration ratios must be in [1, 100]"
                 )
+            joint_kd = {
+                "A": (state3_joint_k_a, state3_joint_d_a),
+                "B": (state3_joint_k_b, state3_joint_d_b),
+            }
+            for arm, (joint_k, joint_d) in joint_kd.items():
+                if (joint_k is None) != (joint_d is None):
+                    raise TianjiHostError(
+                        f"state3 joint K/D values for arm {arm} must be provided together"
+                    )
+                if joint_k is not None and (len(joint_k) != 7 or len(joint_d) != 7):
+                    raise TianjiHostError(
+                        f"state3 joint K/D values for arm {arm} must each contain 7 values"
+                    )
             # Match MarvinTeachRuntime.enter_udp_joint_impedance_mode exactly:
-            # state=3 + joint impedance + velocity/acceleration in one batch.
+            # state=3 + joint impedance + joint K/D + velocity/acceleration in one batch.
             # Do not call set_drag_space here. It is a drag-teach setting, is
             # unnecessary for joint-command inference, and some SDK builds do
             # not declare its ctypes bool return type correctly.
@@ -673,17 +697,31 @@ def _load_marvin_controller(sdk_root: Path) -> type[Any]:
                 lambda: self.robot.set_state(arm="B", state=3),
                 lambda: self.robot.set_impedance_type(arm="A", type=1),
                 lambda: self.robot.set_impedance_type(arm="B", type=1),
-                lambda: self.robot.set_vel_acc(
-                    arm="A",
-                    velRatio=int(vel_ratio),
-                    AccRatio=int(acc_ratio),
-                ),
-                lambda: self.robot.set_vel_acc(
-                    arm="B",
-                    velRatio=int(vel_ratio),
-                    AccRatio=int(acc_ratio),
-                ),
             ]
+            for arm in ("A", "B"):
+                joint_k, joint_d = joint_kd[arm]
+                if joint_k is not None:
+                    setters.append(
+                        lambda arm=arm, joint_k=joint_k, joint_d=joint_d: self.robot.set_joint_kd_params(
+                            arm=arm,
+                            K=list(joint_k),
+                            D=list(joint_d),
+                        )
+                    )
+            setters.extend(
+                [
+                    lambda: self.robot.set_vel_acc(
+                        arm="A",
+                        velRatio=int(vel_ratio),
+                        AccRatio=int(acc_ratio),
+                    ),
+                    lambda: self.robot.set_vel_acc(
+                        arm="B",
+                        velRatio=int(vel_ratio),
+                        AccRatio=int(acc_ratio),
+                    ),
+                ]
+            )
             try:
                 _write_marvin_batch(self.robot, *setters)
             except Exception as exc:  # noqa: BLE001

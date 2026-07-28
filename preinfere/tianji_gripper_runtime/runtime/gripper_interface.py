@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 
 from . import schema
+from .torque_protection import TorqueGraspDetector
 
 
 class GripperError(RuntimeError):
@@ -40,6 +41,17 @@ class GripperConnectionConfig:
     rs05_torque_nm: float = 0.0
     rs05_min_pos_rad: float = -5.5
     rs05_max_pos_rad: float = 1.2
+    rs05_torque_protection_enabled: bool = False
+    rs05_torque_protection_mode: str = "torque"
+    rs05_torque_filter_alpha: float = 0.3
+    rs05_torque_threshold_nm: float = 1.0
+    rs05_torque_release_threshold_nm: float = 0.2
+    rs05_torque_count_threshold: int = 5
+    rs05_torque_extra_tighten_rad: float = 0.0
+    rs05_holding_kp: float = 4.0
+    rs05_holding_kd: float = 0.1
+    rs05_closing_direction: float = 1.0
+    rs05_torque_direction_deadband_rad: float = 0.01
 
 
 class GripperInterface:
@@ -206,6 +218,16 @@ class Rs05MitEndChannelGripperInterface(GripperInterface):
         self.last_feedback_has_fault: int | None = None
         self.last_feedback_has_warning: int | None = None
         self.last_feedback_temperature_c: float | None = None
+        self._feedback_sequence = 0
+        self._torque_protection_feedback_sequence = -1
+        self._torque_detector = TorqueGraspDetector(
+            enabled=config.rs05_torque_protection_enabled,
+            mode=config.rs05_torque_protection_mode.strip().lower(),
+            alpha=config.rs05_torque_filter_alpha,
+            torque_threshold_nm=config.rs05_torque_threshold_nm,
+            release_threshold_nm=config.rs05_torque_release_threshold_nm,
+            count_threshold=config.rs05_torque_count_threshold,
+        )
         if config.home_position is not None:
             self._last_command = _as_gripper_position(config.home_position, name="home_position")
 
@@ -252,11 +274,16 @@ class Rs05MitEndChannelGripperInterface(GripperInterface):
         target = float(
             np.clip(arr[0], self.config.rs05_min_pos_rad, self.config.rs05_max_pos_rad)
         )
+        feedback = self._read_latest_feedback()
+        if feedback is not None:
+            self._last_command = np.asarray([feedback], dtype=np.float32)
+        target = self._apply_torque_protection(target, feedback=feedback)
+        kp, kd = self._control_gains()
         payload = _rs05_mit_control_payload(
             position_rad=target,
             velocity_rad_s=0.0,
-            kp=self.config.rs05_kp,
-            kd=self.config.rs05_kd,
+            kp=kp,
+            kd=kd,
             torque_nm=self.config.rs05_torque_nm,
         )
         self._send_frame(
@@ -268,6 +295,59 @@ class Rs05MitEndChannelGripperInterface(GripperInterface):
             )
         )
         self._last_command = np.asarray([target], dtype=np.float32)
+
+    @property
+    def torque_protection_has_object(self) -> bool:
+        return self._torque_detector.has_object
+
+    @property
+    def torque_protection_filtered_torque_nm(self) -> float:
+        return self._torque_detector.filtered_effort_nm
+
+    def _apply_torque_protection(self, target: float, *, feedback: float | None) -> float:
+        if not self.config.rs05_torque_protection_enabled:
+            return target
+
+        current_position = float(self._last_command[0]) if feedback is None else float(feedback)
+        closing_direction = 1.0 if self.config.rs05_closing_direction >= 0.0 else -1.0
+        direction_delta = closing_direction * (target - current_position)
+        deadband = max(float(self.config.rs05_torque_direction_deadband_rad), 0.0)
+        closing = direction_delta > deadband
+        opening = direction_delta < -deadband
+
+        has_new_feedback = (
+            self._feedback_sequence != self._torque_protection_feedback_sequence
+        )
+        if has_new_feedback:
+            self._torque_detector.update(
+                self.last_feedback_torque_nm,
+                closing=closing,
+                opening=opening,
+            )
+            self._torque_protection_feedback_sequence = self._feedback_sequence
+        elif opening:
+            self._torque_detector.reset()
+
+        if not self._torque_detector.has_object or not closing:
+            return target
+
+        extra_tighten = abs(float(self.config.rs05_torque_extra_tighten_rad))
+        hold_target = current_position + closing_direction * extra_tighten
+        hold_target = float(
+            np.clip(
+                hold_target,
+                self.config.rs05_min_pos_rad,
+                self.config.rs05_max_pos_rad,
+            )
+        )
+        if closing_direction * (target - hold_target) <= 1e-6:
+            return target
+        return hold_target
+
+    def _control_gains(self) -> tuple[float, float]:
+        if self._torque_detector.has_object:
+            return self.config.rs05_holding_kp, self.config.rs05_holding_kd
+        return self.config.rs05_kp, self.config.rs05_kd
 
     def hold_position(self) -> None:
         self.send_position(self._last_command)
@@ -340,6 +420,8 @@ class Rs05MitEndChannelGripperInterface(GripperInterface):
                 self.last_feedback_has_warning = int(has_warning)
             if temperature_c is not None:
                 self.last_feedback_temperature_c = float(temperature_c)
+        if latest is not None:
+            self._feedback_sequence += 1
         return latest
 
 
