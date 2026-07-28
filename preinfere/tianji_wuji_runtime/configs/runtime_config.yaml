@@ -1,0 +1,52 @@
+# Default runtime arguments. CLI flags in deployment/*.py are the source of truth
+# for now; this file documents values that should be pinned per checkpoint.
+
+policy:
+  host: 127.0.0.1
+  port: 5555
+  timeout_ms: 15000
+
+task:
+  instruction: "pick up bottle"
+
+execution:
+  execution_horizon: 1
+  duration: 0.05
+  inference_mode: sync
+  safe_mode: true
+  dry_run: true
+  action_mode: absolute
+  policy_unit: deg
+  control_unit: deg
+
+robot:
+  backend: fake
+  robot_ip: null
+  left_arm_ip: null
+  left_arm_port: null
+  right_arm_ip: null
+  right_arm_port: null
+  left_hand_ip: null
+  left_hand_port: null
+  right_hand_ip: null
+  right_hand_port: null
+  left_hand_serial: null
+  right_hand_serial: null
+  left_hand_home: null
+  right_hand_home: null
+  hand_lowpass_cutoff_hz: 5.0
+  tianji_sdk_root: /home/user/workspace/DexProj_back_up_0602/wuji-hand-teleop/src/output_devices/tianji_output
+  tianji_config_path: /home/user/workspace/DexProj_back_up_0602/wuji-hand-teleop/src/output_devices/tianji_output/tianji_output/config/ccs_m6.MvKDCfg
+
+logging:
+  record_dir: ./infer_logs
+
+dataset_alignment:
+  dataset_path: /mnt/data/qdhe/workspace/datasets/local_lerobot_dataset
+  modality_config_path: /mnt/data/qdhe/workspace/GR00T/examples/Tianji_Wuji/arm_relative_config.py
+  camera_keys: [head, left_wrist, right_wrist]
+  state_action_order:
+    - left_arm_joint: [0, 7]
+    - right_arm_joint: [7, 14]
+    - left_hand: [14, 34]
+    - right_hand: [34, 54]

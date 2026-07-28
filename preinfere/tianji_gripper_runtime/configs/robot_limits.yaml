@@ -1,0 +1,22 @@
+right_arm_joint_min: [-178.0, -120.0, -178.0, -145.0, -178.0, -60.0, -90.0]
+right_arm_joint_max: [178.0, 120.0, 178.0, 60.0, 178.0, 60.0, 90.0]
+
+# Collection calibration converted to motor radians:
+# opening=[-1,96] mm, zero=0 mm, travel=0.840824 rev, mm_sign=-1.
+right_gripper_min: [-5.283053]
+right_gripper_max: [0.055032]
+
+arm_max_step: 10.0
+gripper_max_step: 2.0
+arm_max_velocity: 180.0
+gripper_max_velocity: 2.0
+
+enable_arm_joint_limit: true
+enable_gripper_limit: true
+enable_arm_delta_clip: true
+enable_gripper_delta_clip: true
+enable_arm_velocity_limit: true
+enable_gripper_velocity_limit: false
+enable_filter: false
+filter_alpha: 0.35
+max_consecutive_events: 100

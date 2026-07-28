@@ -1,0 +1,113 @@
+robot_backend: tianji_gripper_host
+gripper_backend: rs05_mit_end_channel
+left_gripper_backend: rs05_mit_end_channel
+right_gripper_backend: rs05_mit_end_channel
+robot_ip: 192.168.2.168
+
+# Arm SDK is configured independently from the gripper SDK below.
+# Set robot_backend: tianji_gripper_host when sending commands to the Tianji arms.
+
+# NOTE:
+# This path can point either to the legacy `tianji_output` checkout or directly
+# to a MARVIN_SDK directory. The runtime auto-detects the matching adapter.
+tianji_sdk_root: /home/user/workspace/TJ-gripper-codex-gripper-fixes-20260617-reclone/reference/MARVIN_SDK
+tianji_config_path: /home/user/workspace/TJ-gripper-codex-gripper-fixes-20260617-reclone/reference/MARVIN_SDK/DEMO_PYTHON/ccs_m3.MvKDCfg
+tianji_vel_ratio: 80
+tianji_acc_ratio: 70
+tianji_settle_sec: 0.5
+tianji_tool_arm_a_kinematics: "0,0,0,0,0,0"
+tianji_tool_arm_a_dynamics: "0.407936,83.093744,83.908698,311.682330,0.019412,0,0,0.001,0,0.019863"
+tianji_tool_arm_b_kinematics: "0,0,0,0,0,0"
+tianji_tool_arm_b_dynamics: "0.428222,40.605956,2.428646,248.022467,0.011021,0,0,0.001,0,0.002569"
+tianji_home_joints_a: "90,-90,-90,0,0,0,0"
+tianji_home_joints_b: "-90,-90,90,0,0,0,0"
+
+# Gripper SDK boundary. Keep left fake if only the right gripper is installed/used.
+# Once the real SDK is known, set right_gripper_backend: generic_sdk and fill these.
+left_gripper_ip:
+left_gripper_port:
+left_gripper_serial:
+right_gripper_ip:
+right_gripper_port:
+right_gripper_serial:
+gripper_sdk_module:
+gripper_sdk_class:
+left_gripper_home:
+right_gripper_home:
+# Left-side freeze targets are intentionally unset for dual-arm inference.
+# In dual_arm_dual_gripper mode, both Arm A and its gripper must use live SDK
+# feedback. These options are only valid for right_arm_right_gripper mode.
+left_arm_freeze_q:
+left_gripper_freeze_q:
+
+# TJ-style RS05/MIT end-channel gripper backend.
+# Use right_gripper_backend: rs05_mit_end_channel if the gripper is driven through
+# the Tianji/Marvin arm end 485/CAN channel instead of a standalone Python SDK.
+gripper_485_arm: B
+gripper_485_com: 1
+left_gripper_485_arm: A
+left_gripper_485_com: 1
+right_gripper_485_arm: B
+right_gripper_485_com: 1
+gripper_direct_onset: true
+gripper_rs05_target_id: 0x08
+gripper_rs05_master_id: 0xFD
+gripper_can_id_byteorder: little
+gripper_standard_id_bytes: 4
+gripper_enter_motor: true
+gripper_stop_on_disconnect: false
+gripper_kp: 35
+gripper_kd: 0.8
+gripper_torque_nm: 0.0
+# Derived from the collection calibration: opening=[-1,96] mm,
+# zero=0 mm, travel=0.840824 rev, mm_sign=-1.
+gripper_min_pos_rad: -5.283053
+gripper_max_pos_rad: 0.055032
+
+camera:
+  - head:realsense:401622070444
+  - left_wrist:realsense:260422274472
+  - right_wrist:realsense:260522278232
+
+camera_width: 424
+camera_height: 240
+camera_capture_fps: 30
+camera_fps: 30
+max_camera_age_ms: 150
+camera_warmup_sec: 3
+
+policy_type: pi
+control_mode: dual_arm_dual_gripper
+pi_action_layout: ziyi_16d_right_left_dual_gripper
+policy_host: 127.0.0.1
+policy_port: 8000
+policy_timeout_ms: 15000
+policy_wait_sec: 300
+robot_arm_state_unit: deg
+policy_arm_state_unit: rad
+robot_gripper_state_unit: rad
+policy_gripper_state_unit: rad
+policy_arm_unit: rad
+control_arm_unit: deg
+policy_gripper_unit: rad
+control_gripper_unit: rad
+
+task: "Put all the objects on the desk into the storage box"
+# Execute policy actions at 30 Hz (one step every 1/30 second).
+execution_horizon: 16
+duration: 0.05
+chunk_sleep: 0.05
+
+safe_mode: false
+dry_run: false
+auto_start: false
+no_keyboard: false
+gripper_open_key: o
+gripper_open_limit: min
+max_chunks:
+
+arm_interpolation_hz:
+arm_interpolation_mode: cubic
+ignore_gripper_safety: false
+max_arm_joint_step: 2.0
+max_gripper_step: 0.2

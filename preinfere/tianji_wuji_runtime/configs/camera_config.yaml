@@ -1,0 +1,25 @@
+# Camera slots must match the checkpoint modality config generated from
+# /mnt/data/qdhe/workspace/datasets/local_lerobot_dataset.
+
+cameras:
+  - key: head
+    source: dummy
+    width: 1280
+    height: 720
+    flip_horizontal: false
+    flip_vertical: false
+    rotate_degrees: 0
+  - key: left_wrist
+    source: dummy
+    width: 848
+    height: 480
+    flip_horizontal: false
+    flip_vertical: false
+    rotate_degrees: 0
+  - key: right_wrist
+    source: dummy
+    width: 848
+    height: 480
+    flip_horizontal: false
+    flip_vertical: false
+    rotate_degrees: 0

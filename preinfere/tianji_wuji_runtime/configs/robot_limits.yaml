@@ -1,0 +1,34 @@
+# Marvin M6-CCS independent joint limits from the vendor manual.
+# Note: the manual also provides a J6/J7 coupling chart for CCS wrists.
+# This file currently stores only the first-layer per-joint clamp ranges.
+
+unit: deg
+
+left_arm_joint_min: [-178.0, -120.0, -178.0, -145.0, -178.0, -60.0, -90.0]
+left_arm_joint_max: [178.0, 120.0, 178.0, 60.0, 178.0, 60.0, 90.0]
+right_arm_joint_min: [-178.0, -120.0, -178.0, -145.0, -178.0, -60.0, -90.0]
+right_arm_joint_max: [178.0, 120.0, 178.0, 60.0, 178.0, 60.0, 90.0]
+
+left_hand_joint_min:
+  [-360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0,
+   -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0]
+left_hand_joint_max:
+  [360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0,
+   360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0]
+right_hand_joint_min:
+  [-360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0,
+   -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0, -360.0]
+right_hand_joint_max:
+  [360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0,
+   360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0, 360.0]
+
+arm_max_step: 10.0
+hand_max_step: 4.5
+arm_max_velocity: null
+hand_max_velocity: null
+enable_arm_joint_limit: true
+enable_hand_joint_limit: false
+enable_arm_delta_clip: true
+enable_hand_delta_clip: false
+enable_arm_velocity_limit: true
+enable_hand_velocity_limit: false
