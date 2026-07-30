@@ -90,6 +90,20 @@ class RobotConnectionConfig:
     gripper_holding_kd: float = 0.1
     gripper_closing_direction: float = 1.0
     gripper_torque_direction_deadband_rad: float = 0.01
+    # 左右夹爪可以使用不同的抓取力矩标定。空值表示继续使用上面的公共参数，
+    # 以兼容已有配置和只控制单夹爪的调用方。
+    left_gripper_torque_threshold_nm: float | None = None
+    left_gripper_torque_release_threshold_nm: float | None = None
+    left_gripper_torque_count_threshold: int | None = None
+    left_gripper_torque_extra_tighten_rad: float | None = None
+    left_gripper_holding_kp: float | None = None
+    left_gripper_holding_kd: float | None = None
+    right_gripper_torque_threshold_nm: float | None = None
+    right_gripper_torque_release_threshold_nm: float | None = None
+    right_gripper_torque_count_threshold: int | None = None
+    right_gripper_torque_extra_tighten_rad: float | None = None
+    right_gripper_holding_kp: float | None = None
+    right_gripper_holding_kd: float | None = None
     command_left_side: bool = True
     left_arm_freeze_q: tuple[float, ...] | None = None
     left_gripper_freeze_q: tuple[float, ...] | None = None
@@ -477,12 +491,30 @@ def _make_grippers(
             rs05_torque_protection_enabled=config.gripper_torque_protection_enabled,
             rs05_torque_protection_mode=config.gripper_torque_protection_mode,
             rs05_torque_filter_alpha=config.gripper_torque_filter_alpha,
-            rs05_torque_threshold_nm=config.gripper_torque_threshold_nm,
-            rs05_torque_release_threshold_nm=config.gripper_torque_release_threshold_nm,
-            rs05_torque_count_threshold=config.gripper_torque_count_threshold,
-            rs05_torque_extra_tighten_rad=config.gripper_torque_extra_tighten_rad,
-            rs05_holding_kp=config.gripper_holding_kp,
-            rs05_holding_kd=config.gripper_holding_kd,
+            rs05_torque_threshold_nm=_override(
+                config.left_gripper_torque_threshold_nm,
+                config.gripper_torque_threshold_nm,
+            ),
+            rs05_torque_release_threshold_nm=_override(
+                config.left_gripper_torque_release_threshold_nm,
+                config.gripper_torque_release_threshold_nm,
+            ),
+            rs05_torque_count_threshold=_override(
+                config.left_gripper_torque_count_threshold,
+                config.gripper_torque_count_threshold,
+            ),
+            rs05_torque_extra_tighten_rad=_override(
+                config.left_gripper_torque_extra_tighten_rad,
+                config.gripper_torque_extra_tighten_rad,
+            ),
+            rs05_holding_kp=_override(
+                config.left_gripper_holding_kp,
+                config.gripper_holding_kp,
+            ),
+            rs05_holding_kd=_override(
+                config.left_gripper_holding_kd,
+                config.gripper_holding_kd,
+            ),
             rs05_closing_direction=config.gripper_closing_direction,
             rs05_torque_direction_deadband_rad=config.gripper_torque_direction_deadband_rad,
         ),
@@ -515,12 +547,30 @@ def _make_grippers(
             rs05_torque_protection_enabled=config.gripper_torque_protection_enabled,
             rs05_torque_protection_mode=config.gripper_torque_protection_mode,
             rs05_torque_filter_alpha=config.gripper_torque_filter_alpha,
-            rs05_torque_threshold_nm=config.gripper_torque_threshold_nm,
-            rs05_torque_release_threshold_nm=config.gripper_torque_release_threshold_nm,
-            rs05_torque_count_threshold=config.gripper_torque_count_threshold,
-            rs05_torque_extra_tighten_rad=config.gripper_torque_extra_tighten_rad,
-            rs05_holding_kp=config.gripper_holding_kp,
-            rs05_holding_kd=config.gripper_holding_kd,
+            rs05_torque_threshold_nm=_override(
+                config.right_gripper_torque_threshold_nm,
+                config.gripper_torque_threshold_nm,
+            ),
+            rs05_torque_release_threshold_nm=_override(
+                config.right_gripper_torque_release_threshold_nm,
+                config.gripper_torque_release_threshold_nm,
+            ),
+            rs05_torque_count_threshold=_override(
+                config.right_gripper_torque_count_threshold,
+                config.gripper_torque_count_threshold,
+            ),
+            rs05_torque_extra_tighten_rad=_override(
+                config.right_gripper_torque_extra_tighten_rad,
+                config.gripper_torque_extra_tighten_rad,
+            ),
+            rs05_holding_kp=_override(
+                config.right_gripper_holding_kp,
+                config.gripper_holding_kp,
+            ),
+            rs05_holding_kd=_override(
+                config.right_gripper_holding_kd,
+                config.gripper_holding_kd,
+            ),
             rs05_closing_direction=config.gripper_closing_direction,
             rs05_torque_direction_deadband_rad=config.gripper_torque_direction_deadband_rad,
         ),
@@ -528,6 +578,11 @@ def _make_grippers(
         end_channel=end_channel,
     )
     return left_gripper, right_gripper
+
+
+def _override(side_value, common_value):
+    """优先使用单侧夹爪配置；未填写时回退到原有公共配置。"""
+    return common_value if side_value is None else side_value
 
 
 def _optional_gripper_home(value: tuple[float, ...] | None) -> np.ndarray | None:

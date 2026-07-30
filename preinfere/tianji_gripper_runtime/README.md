@@ -166,22 +166,25 @@ B/右臂（fb，度）：[-140, -90, 90, -120, 0, 0, 0]
 
 ### 1.1 RS05 夹爪反馈力矩保护
 
-`configs/infer.yaml` 中的 `gripper_torque_protection_enabled` 默认是 `false`，因此不会改变
-现有夹爪下发行为。需要启用时改为：
+`configs/infer.yaml` 使用总开关控制双夹爪的反馈力矩保护。当前部署配置已经启用：
 
 ```yaml
 gripper_torque_protection_enabled: true
 ```
 
-启用后，RS05 每次收到新的反馈帧都会对 `torque_nm` 做低通滤波；夹爪仍在闭合且连续
-`gripper_torque_count_threshold` 帧超过 `gripper_torque_threshold_nm` 后，会判定已经夹到物体。
-此时目标会限制在当前反馈位置加上 `gripper_torque_extra_tighten_rad`，并切换到
-`gripper_holding_kp` / `gripper_holding_kd`，避免模型继续把夹爪向物体挤压。张开命令会立即
-解除保护；未继续闭合且力矩低于 `gripper_torque_release_threshold_nm` 时也会解除。
+启用后，RS05 每次收到新的反馈帧都会对 `torque_nm` 做低通滤波。夹爪仍在闭合且连续指定
+帧数超过阈值后，会判定已经夹到物体。此时目标会限制在当前反馈位置加上少量追加夹紧量，
+并切换到较低的保持 KP/KD，避免模型继续把夹爪向物体挤压。张开命令会立即解除保护；未继续
+闭合且力矩低于释放阈值时也会解除。
+
+左右夹爪使用各自的实测参数，前缀分别为 `left_gripper_` 和 `right_gripper_`，包括
+`torque_threshold_nm`、`torque_release_threshold_nm`、`torque_count_threshold`、
+`torque_extra_tighten_rad`、`holding_kp` 和 `holding_kd`。若某个单侧字段留空，则回退到
+对应的 `gripper_*` 公共参数，以兼容旧配置。
 
 当前标定下，增大 rad 表示闭合，所以 `gripper_closing_direction: 1.0`。如果夹爪实际方向相反，
-必须改为 `-1.0` 后再启用。建议先以默认阈值 `1.0 Nm`、连续 `5` 帧在空载和常用物体上测试，
-确认不会误触发后再用于正式推理。
+必须改为 `-1.0` 后再启用。力矩保护依赖该侧 RS05 的有效反馈；没有反馈的一侧不能可靠完成
+抓取检测，应先修复反馈链路或关闭总开关。
 
 ### 1.2 夹爪归一化标定
 

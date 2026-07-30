@@ -63,15 +63,15 @@ gripper_can_id_byteorder: little
 gripper_standard_id_bytes: 4
 gripper_enter_motor: true
 gripper_stop_on_disconnect: false
-gripper_kp: 40
-gripper_kd: 5
+gripper_kp: 35
+gripper_kd: 0.8
 gripper_torque_nm: 0.0
 # Derived from the collection calibration: opening=[-1,96] mm,
 # zero=0 mm, travel=0.840824 rev, mm_sign=-1.
 gripper_min_pos_rad: -5.283053
 gripper_max_pos_rad: 0.055032
 # 夹爪反馈力矩保护；false 保持原有夹爪下发逻辑，true 时启用下列抓取检测与保持控制。
-gripper_torque_protection_enabled: false
+gripper_torque_protection_enabled: true
 # RS05 反馈信号来源；torque 使用反馈中的 torque_nm，disabled 可临时禁用检测。
 gripper_torque_protection_mode: torque
 # 力矩一阶低通滤波系数，取值范围 0~1；越大越跟随当前反馈。
@@ -91,6 +91,20 @@ gripper_holding_kd: 0.1
 gripper_closing_direction: 1.0
 # 目标与反馈的位移小于该值时不判定为张开或闭合，避免零点附近反复切换。
 gripper_torque_direction_deadband_rad: 0.01
+# A/左夹爪（gripper）的实测抓取检测参数。
+left_gripper_torque_threshold_nm: 0.8
+left_gripper_torque_release_threshold_nm: 0.10
+left_gripper_torque_count_threshold: 3
+left_gripper_torque_extra_tighten_rad: 0.0
+left_gripper_holding_kp: 3.5
+left_gripper_holding_kd: 0.1
+# B/右夹爪（gripper2）的实测抓取检测参数。
+right_gripper_torque_threshold_nm: 2.0
+right_gripper_torque_release_threshold_nm: 0.15
+right_gripper_torque_count_threshold: 5
+right_gripper_torque_extra_tighten_rad: 0.02
+right_gripper_holding_kp: 8.0
+right_gripper_holding_kd: 0.2
 
 camera:
   - head:realsense:401622070444
@@ -121,11 +135,12 @@ policy_gripper_unit: normalized
 control_gripper_unit: rad
 # 夹爪归一化标定必须与数采仓库 configs/marvin/default.yaml 完全一致。
 # gripper 对应左夹爪(A)，gripper2 对应右夹爪(B)；闭合=1，张开=0。
-# 当前数采 YAML 仍是空值，请填入实测电机角度后再启动模型部署。
-gripper_close_motor_rad:
-gripper_open_motor_rad:
-gripper2_close_motor_rad:
-gripper2_open_motor_rad:
+# A/左夹爪（gripper）的实测电机端点：normalized 0=全开，1=全闭。
+gripper_close_motor_rad: -0.000191
+gripper_open_motor_rad: -5.254635
+# B/右夹爪（gripper2）的实测电机端点：normalized 0=全开，1=全闭。
+gripper2_close_motor_rad: -0.000191
+gripper2_open_motor_rad: -5.273327
 
 task: "Put all the objects on the desk into the storage box"
 # Execute policy actions at 30 Hz (one step every 1/30 second).
@@ -141,7 +156,7 @@ gripper_open_key: o
 gripper_open_limit: min
 max_chunks:
 
-arm_interpolation_hz:
+arm_interpolation_hz: 200
 arm_interpolation_mode: cubic
 # 慢速插值下发参数；slow_dispatch_enabled=false 时，默认推理接口不启用慢速插值。
 # 改为 true 后，当前推理入口会使用以下时长、频率和插值方式。

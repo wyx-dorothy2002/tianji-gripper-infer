@@ -341,6 +341,19 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gripper-holding-kd", type=float, default=0.1)
     parser.add_argument("--gripper-closing-direction", type=float, choices=[-1.0, 1.0], default=1.0)
     parser.add_argument("--gripper-torque-direction-deadband-rad", type=float, default=0.01)
+    # 单侧参数为空时，RobotConnectionConfig 会回退到上面的公共参数。
+    parser.add_argument("--left-gripper-torque-threshold-nm", type=float, default=None)
+    parser.add_argument("--left-gripper-torque-release-threshold-nm", type=float, default=None)
+    parser.add_argument("--left-gripper-torque-count-threshold", type=int, default=None)
+    parser.add_argument("--left-gripper-torque-extra-tighten-rad", type=float, default=None)
+    parser.add_argument("--left-gripper-holding-kp", type=float, default=None)
+    parser.add_argument("--left-gripper-holding-kd", type=float, default=None)
+    parser.add_argument("--right-gripper-torque-threshold-nm", type=float, default=None)
+    parser.add_argument("--right-gripper-torque-release-threshold-nm", type=float, default=None)
+    parser.add_argument("--right-gripper-torque-count-threshold", type=int, default=None)
+    parser.add_argument("--right-gripper-torque-extra-tighten-rad", type=float, default=None)
+    parser.add_argument("--right-gripper-holding-kp", type=float, default=None)
+    parser.add_argument("--right-gripper-holding-kd", type=float, default=None)
     parser.add_argument("--gripper-open-key", default="o")
     parser.add_argument(
         "--gripper-open-limit",
@@ -675,6 +688,26 @@ def main() -> int:
             gripper_holding_kd=args.gripper_holding_kd,
             gripper_closing_direction=args.gripper_closing_direction,
             gripper_torque_direction_deadband_rad=args.gripper_torque_direction_deadband_rad,
+            left_gripper_torque_threshold_nm=args.left_gripper_torque_threshold_nm,
+            left_gripper_torque_release_threshold_nm=(
+                args.left_gripper_torque_release_threshold_nm
+            ),
+            left_gripper_torque_count_threshold=args.left_gripper_torque_count_threshold,
+            left_gripper_torque_extra_tighten_rad=(
+                args.left_gripper_torque_extra_tighten_rad
+            ),
+            left_gripper_holding_kp=args.left_gripper_holding_kp,
+            left_gripper_holding_kd=args.left_gripper_holding_kd,
+            right_gripper_torque_threshold_nm=args.right_gripper_torque_threshold_nm,
+            right_gripper_torque_release_threshold_nm=(
+                args.right_gripper_torque_release_threshold_nm
+            ),
+            right_gripper_torque_count_threshold=args.right_gripper_torque_count_threshold,
+            right_gripper_torque_extra_tighten_rad=(
+                args.right_gripper_torque_extra_tighten_rad
+            ),
+            right_gripper_holding_kp=args.right_gripper_holding_kp,
+            right_gripper_holding_kd=args.right_gripper_holding_kd,
             command_left_side=args.control_mode == "dual_arm_dual_gripper",
             left_arm_freeze_q=_parse_optional_vector(
                 args.left_arm_freeze_q,

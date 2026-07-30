@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import pytest
+from tianji_gripper_runtime.runtime import robot_interface
 from tianji_gripper_runtime.runtime.gripper_interface import GripperConnectionConfig
 from tianji_gripper_runtime.runtime.gripper_interface import Rs05MitEndChannelGripperInterface
 from tianji_gripper_runtime.runtime.gripper_interface import _uint_to_float
+from tianji_gripper_runtime.runtime.robot_interface import RobotConnectionConfig
 from tianji_gripper_runtime.runtime.torque_protection import TorqueGraspDetector
 
 
@@ -50,6 +53,48 @@ def _frame_gains(frame_hex: str) -> tuple[float, float]:
 
 
 class TorqueProtectionTest(unittest.TestCase):
+    def test_dual_grippers_receive_independent_torque_settings(self) -> None:
+        captured: list[GripperConnectionConfig] = []
+
+        def capture_config(config, *, backend, end_channel):
+            del backend, end_channel
+            captured.append(config)
+            return object()
+
+        connection = RobotConnectionConfig(
+            command_left_side=True,
+            gripper_torque_protection_enabled=True,
+            left_gripper_torque_threshold_nm=0.8,
+            left_gripper_torque_release_threshold_nm=0.10,
+            left_gripper_torque_count_threshold=3,
+            left_gripper_torque_extra_tighten_rad=0.0,
+            left_gripper_holding_kp=3.5,
+            left_gripper_holding_kd=0.1,
+            right_gripper_torque_threshold_nm=2.0,
+            right_gripper_torque_release_threshold_nm=0.15,
+            right_gripper_torque_count_threshold=5,
+            right_gripper_torque_extra_tighten_rad=0.02,
+            right_gripper_holding_kp=8.0,
+            right_gripper_holding_kd=0.2,
+        )
+
+        with patch.object(robot_interface, "make_gripper", side_effect=capture_config):
+            robot_interface._make_grippers(connection, end_channel=object())
+
+        left, right = captured
+        assert left.rs05_torque_threshold_nm == pytest.approx(0.8)
+        assert left.rs05_torque_release_threshold_nm == pytest.approx(0.10)
+        assert left.rs05_torque_count_threshold == 3
+        assert left.rs05_torque_extra_tighten_rad == pytest.approx(0.0)
+        assert left.rs05_holding_kp == pytest.approx(3.5)
+        assert left.rs05_holding_kd == pytest.approx(0.1)
+        assert right.rs05_torque_threshold_nm == pytest.approx(2.0)
+        assert right.rs05_torque_release_threshold_nm == pytest.approx(0.15)
+        assert right.rs05_torque_count_threshold == 5
+        assert right.rs05_torque_extra_tighten_rad == pytest.approx(0.02)
+        assert right.rs05_holding_kp == pytest.approx(8.0)
+        assert right.rs05_holding_kd == pytest.approx(0.2)
+
     def test_detector_latches_and_releases_after_torque_drops(self) -> None:
         detector = TorqueGraspDetector(
             enabled=True,
